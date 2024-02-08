@@ -156,6 +156,8 @@ class TerminalWidget(QWidget):
                 subprocess.Popen(["java", "-jar", filename])
             elif filename.endswith(".exe"):
                 subprocess.Popen([filename])
+            elif filename.endswith(".lnk"):  # 处理快捷方式文件
+                os.startfile(filename)
 
     def init_ui(self):
         layout = QVBoxLayout()
