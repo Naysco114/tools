@@ -94,7 +94,7 @@ class TerminalWidget(QWidget):
                 self.current_folder_label.setText(drive)
                 self.current_dir = drive  # 更新当前目录
                 self.update_list_widget()
-                print("切换盘符成功")
+                # print("切换盘符成功")
             else:
                 print("未选择盘符")
         else:
