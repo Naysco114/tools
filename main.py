@@ -10,6 +10,7 @@ from PyQt6.QtCore import pyqtSignal, pyqtSlot, QProcess, QUrl
 from PyQt6.QtGui import QTextCursor, QAction
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
+
 class Stream:
     """Redirects console output to text widget."""
 
@@ -21,6 +22,7 @@ class Stream:
 
     def flush(self):
         pass  # No-op for flush
+
 
 class TerminalWidget(QWidget):
     command_executed = pyqtSignal(str)
@@ -91,6 +93,7 @@ class TerminalWidget(QWidget):
             cursor.insertText(text)
         self.output_text.setTextCursor(cursor)
 
+
 class BrowserWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -119,12 +122,14 @@ class BrowserWidget(QWidget):
             url = "http://" + url
         self.browser.load(QUrl(url))
 
+
 class GetFileNameGUI(QWidget):
     """Main application window."""
 
     def __init__(self):
         super().__init__()
 
+        self.drives = None
         self.current_path = os.getcwd()
         self.get_drives()
 
@@ -281,6 +286,7 @@ class GetFileNameGUI(QWidget):
         except Exception as e:
             print("切换盘符时出错:", e)
 
+
 class TwoWindow(QWidget):
     """Second application window."""
 
@@ -310,6 +316,7 @@ class TwoWindow(QWidget):
         if not (url.startswith("http://") or url.startswith("https://")):
             url = "http://" + url
         self.browser.load(QUrl(url))
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -355,6 +362,7 @@ class MainWindow(QMainWindow):
         elif platform.system() == "Linux":
             os.system(f"x-terminal-emulator --working-directory={current_path}")
             self.get_file_name_gui.output_text.append("成功打开终端")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
