@@ -1,49 +1,56 @@
-import platform
 import os
-import subprocess
 import sys
+import platform
+import subprocess
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QListWidgetItem, QLineEdit, QTextEdit, QLabel,
-    QMainWindow, QApplication, QFileDialog
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QTextEdit, QListWidget, QLabel, QPushButton, QLineEdit
 )
-from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QProcess, QIODevice
+from PyQt6.QtCore import pyqtSignal, QIODevice, pyqtSlot
 from PyQt6.QtGui import QTextCursor, QAction
+from PyQt6.QtCore import QProcess
+
+
+class Stream:
+    """Redirects console output to text widget."""
+
+    def __init__(self, text_widget):
+        self.text_widget = text_widget
+
+    def write(self, text):
+        self.text_widget.append(text)
+
+    def flush(self):
+        pass  # No-op for flush
 
 
 class TerminalWidget(QWidget):
-    def __init__(self, tool_dir, current_dir=None):
-        super().__init__()
+    command_executed = pyqtSignal(str)
 
-        self.tool_dir = tool_dir
-        self.current_dir = current_dir
+    def __init__(self):
+        super().__init__()
 
         self.command_line = QLineEdit()
         self.execute_button = QPushButton("执行")
-        self.switch_drive_button = QPushButton("切换盘")
-        # 添加与功能1页面相同的按钮
-        self.switch_button = QPushButton("切换文件夹")
-        self.open_button = QPushButton("打开当前文件夹")
-        self.back_button = QPushButton("返回上一级")
-        self.execute_file_button = QPushButton("执行选中文件")
 
-        self.files_list_label = QLabel("当前文件夹:")
-        self.current_folder_label = QLabel()
-
-        self.list_widget = QListWidget()
-
+        layout = QVBoxLayout()
         self.output_text = QTextEdit()
+        self.output_text.setReadOnly(True)
+        layout.addWidget(self.output_text)
+
+        terminal_layout = QVBoxLayout()
+        terminal_layout.addWidget(self.command_line)
+        terminal_layout.addWidget(self.execute_button)
+
+        layout.addLayout(terminal_layout)
+        self.setLayout(layout)
 
         self.process = QProcess()
         self.process.readyReadStandardOutput.connect(self.on_ready_read_standard_output)
         self.process.readyReadStandardError.connect(self.on_ready_read_standard_error)
 
-        self.current_dir = current_dir
         self.start_terminal()
-
-        self.init_ui()
-        self.bind_buttons()
-
-        self.update_list_widget()
+        self.execute_button.clicked.connect(self.execute_command)
 
     def start_terminal(self):
         if sys.platform == "win32":
@@ -86,289 +93,228 @@ class TerminalWidget(QWidget):
             cursor.insertText(text)
         self.output_text.setTextCursor(cursor)
 
-    def switch_drive(self):
-        if platform.system() == "Windows":
-            drive = QFileDialog.getExistingDirectory(self, "选择驱动器", "C:/")
-            if drive:
-                os.chdir(drive)
-                self.current_folder_label.setText(drive)
-                self.current_dir = drive  # 更新当前目录
-                self.update_list_widget()
-                # print("切换盘符成功")
-            else:
-                print("未选择盘符")
-        else:
-            print("非Windows系统，无法切换盘符")
 
-    def update_list_widget(self):
-        self.list_widget.clear()
-        self.current_dir = os.getcwd() if self.current_dir is None else self.current_dir  # 设置 current_dir
-        os.chdir(self.current_dir)
-        self.start_terminal()  # 在更新列表小部件时启动终端
-        for item in os.listdir("."):
-            full_path = os.path.join(self.current_dir, item)
-            if os.path.isdir(full_path):
-                self.add_list_item(item + "/")
-            else:
-                self.add_list_item(item)
+class GetFileNameGUI(QWidget):
+    """Main application window."""
 
-    def add_list_item(self, name):
-        item = QListWidgetItem(name)
-        item.setFlags(
-            item.flags() | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-        self.list_widget.addItem(item)
+    def __init__(self):
+        super().__init__()
 
-    def go_to_directory(self, dirname):
-        if os.path.isdir(dirname):  # 检查是否是一个目录
-            self.current_dir = dirname
-            self.update_list_widget()
-        else:
-            return f"{dirname} 不是一个有效的目录"
+        self.current_path = os.getcwd()
+        self.get_drives()
 
-    def go_back(self):
-        if self.current_dir != self.tool_dir:
-            self.current_dir = os.path.dirname(self.current_dir)
-            self.update_list_widget()
+        self.label = QLabel("当前目录: " + self.current_path)
+        self.directory_label = QLabel("")
 
-    def open_current_directory(self):
-        subprocess.Popen(["explorer", self.current_dir])
-        self.update_list_widget()
+        self.drive_listbox = QListWidget()
+        self.files_listbox = QListWidget()
 
-    def switch_to_selected_folder(self):
-        selected_items = self.list_widget.selectedItems()
-        if selected_items:
-            selected_item_text = selected_items[0].text()
-            full_path = os.path.join(self.current_dir, selected_item_text.rstrip("/"))
-            return full_path  # 返回新的当前文件夹路径
+        self.display_current_drive()
 
-    def execute_selected_file(self):
-        selected_items = self.list_widget.selectedItems()
-        if selected_items:
-            selected_item_text = selected_items[0].text()
-            full_path = os.path.join(self.current_dir, selected_item_text)
-            self.execute_file(full_path)
+        self.refresh_button = QPushButton("刷新")
+        self.parent_button = QPushButton("返回上一级")
+        self.clear_output_button = QPushButton("清空输出")
+        self.change_dir_button = QPushButton("切换目录")
+        self.change_drive_button = QPushButton("切换盘")
+        self.get_system_info_button = QPushButton("获取系统信息")
 
-    def execute_file(self, filename):
-        if os.path.isfile(filename):
-            if filename.endswith(".py"):
-                subprocess.Popen(["python", filename])
-            elif filename.endswith(".jar"):
-                subprocess.Popen(["java", "-jar", filename])
-            elif filename.endswith(".exe"):
-                subprocess.Popen([filename])
-            elif filename.endswith(".lnk"):  # 处理快捷方式文件
-                os.startfile(filename)
+        self.command_line = QLineEdit()
+        self.execute_button = QPushButton("执行")
+
+        self.output_text = QTextEdit()
+
+        self.init_ui()
+
+        self.stream = Stream(self.output_text)
+        sys.stdout = self.stream
 
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # 添加顶部按钮布局
-        top_button_layout = QHBoxLayout()
-        top_button_layout.addWidget(self.switch_drive_button)
-        top_button_layout.addWidget(self.switch_button)  # 新添加的按钮
-        top_button_layout.addWidget(self.open_button)  # 新添加的按钮
-        top_button_layout.addWidget(self.back_button)  # 新添加的按钮
-        top_button_layout.addWidget(self.execute_file_button)  # 新添加的按钮
-        top_button_layout.addStretch(1)
-        layout.addLayout(top_button_layout)
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.refresh_button)
+        button_layout.addWidget(self.parent_button)
+        button_layout.addWidget(self.clear_output_button)
+        button_layout.addWidget(self.change_dir_button)
+        button_layout.addWidget(self.change_drive_button)
+        button_layout.addWidget(self.get_system_info_button)  # 添加获取系统信息按钮
 
-        # 添加命令行输入框和执行按钮
-        layout.addWidget(self.command_line)
-        layout.addWidget(self.execute_button)
+        directory_layout = QHBoxLayout()
+        directory_layout.addWidget(self.label)
+        directory_layout.addWidget(self.directory_label)
 
-        # 添加当前文件夹标签和文件列表标签
-        layout.addWidget(self.files_list_label)
-        layout.addWidget(self.current_folder_label)
+        list_layout = QHBoxLayout()
+        list_layout.addWidget(self.drive_listbox)
+        list_layout.addWidget(self.files_listbox)
 
-        # 添加文件列表
-        layout.addWidget(self.list_widget)
+        layout.addLayout(button_layout)
+        layout.addLayout(directory_layout)
+        layout.addLayout(list_layout)
 
-        # 添加输出文本框
         layout.addWidget(self.output_text)
+
+        terminal_widget = TerminalWidget()
+        layout.addWidget(terminal_widget)
 
         self.setLayout(layout)
 
-    def bind_buttons(self):
+        self.refresh_button.clicked.connect(self.refresh)
+        self.parent_button.clicked.connect(self.parent_directory)
+        self.clear_output_button.clicked.connect(self.clear_output)
+        self.change_dir_button.clicked.connect(self.change_directory)
+        self.change_drive_button.clicked.connect(self.change_drive)
+
         self.execute_button.clicked.connect(self.execute_command)
-        self.switch_drive_button.clicked.connect(self.switch_drive)
-        self.switch_button.clicked.connect(self.switch_to_selected_folder_and_refresh)
-        self.open_button.clicked.connect(self.open_current_directory_and_refresh)
-        self.back_button.clicked.connect(self.go_back_and_refresh)
-        self.execute_file_button.clicked.connect(self.execute_selected_file_and_refresh)
+        self.get_system_info_button.clicked.connect(self.get_system_info)  # 连接获取系统信息功能
 
-    def switch_to_selected_folder_and_refresh(self):
-        new_dir = self.switch_to_selected_folder()
-        if new_dir:
-            self.current_dir = new_dir  # 更新当前文件夹路径
-            self.update_current_folder_label()  # 更新当前文件夹标签
-            self.update_list_widget()
+    def get_drives(self):
+        if platform.system() == "Windows":
+            self.drives = [f"{chr(drive)}:" for drive in range(ord("A"), ord("Z") + 1)
+                           if os.path.exists(f"{chr(drive)}:")]
+        else:
+            self.drives = ["/"]
 
-    def open_current_directory_and_refresh(self):
-        self.open_current_directory()
-        self.update_list_widget()
+    def display_current_drive(self):
+        self.drive_listbox.clear()
+        for drive in self.drives:
+            self.drive_listbox.addItem(drive)
 
-    def go_back_and_refresh(self):
-        self.go_back()
-        self.update_list_widget()
-        self.update_current_folder_label()
+        self.directory_label.setText("当前目录: " + self.current_path)
 
-    def execute_selected_file_and_refresh(self):
-        self.execute_selected_file()
-        self.update_list_widget()
+        self.files_listbox.clear()
+        for file in os.listdir(self.current_path):
+            self.files_listbox.addItem(file)
 
-    def update_current_folder_label(self):  # 修正此方法名
-        self.current_folder_label.setText(self.current_dir)  # 更新当前文件夹标签
+    def refresh(self):
+        self.display_current_drive()
+        self.label.setText("当前目录: " + self.current_path)
 
+    def parent_directory(self):
+        try:
+            self.current_path = os.path.dirname(self.current_path)
+            self.refresh()
+            print("返回上一级成功")
+        except Exception as e:
+            print("返回上一级时出错:", e)
 
-class Functionality(QWidget):
-    def __init__(self, tool_dir):
-        super().__init__()
-        self.tool_dir = tool_dir
-        self.current_dir = self.tool_dir  # 使用传递的当前目录作为初始工具目录
-        print("当前目录:", self.current_dir)  # 打印当前目录
-        self.setup_ui()
+    def get_system_info(self):
+        if platform.system() == "Windows":
+            try:
+                completed_process = subprocess.run(["Systeminfo"], capture_output=True, text=True)
+                output = completed_process.stdout
+                self.output_text.append(output)
+            except subprocess.CalledProcessError as e:
+                self.output_text.append(f"执行命令时出错: {e}")
+        elif platform.system() == "Linux":
+            try:
+                completed_process = subprocess.run(["uname", "-a"], capture_output=True, text=True)
+                output = completed_process.stdout
+                self.output_text.append(output)
+            except subprocess.CalledProcessError as e:
+                self.output_text.append(f"执行命令时出错: {e}")
 
-    def setup_ui(self):
-        self.layout = QVBoxLayout(self)
+    def clear_output(self):
+        self.output_text.clear()
 
-        # 添加当前文件夹标签
-        self.files_list_label = QLabel("当前文件夹:")
-        self.current_folder_label = QLabel()  # 添加用于显示当前文件夹的标签
-        self.current_folder_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    def execute_command(self):
+        command = self.command_line.text().strip()
+        if command:
+            try:
+                subprocess.run(command.split(), check=True)
+            except subprocess.CalledProcessError as e:
+                self.output_text.append(f"执行命令时出错: {e}")
 
-        self.layout.addWidget(self.files_list_label)
-        self.layout.addWidget(self.current_folder_label)
-
-        # 添加按钮布局
-        button_layout = QHBoxLayout()
-        self.layout.addLayout(button_layout)
-
-        self.switch_button = QPushButton("切换文件夹")
-        self.open_button = QPushButton("打开当前文件夹")
-        self.back_button = QPushButton("返回上一级")
-
-        button_layout.addWidget(self.switch_button)
-        button_layout.addWidget(self.open_button)
-        button_layout.addWidget(self.back_button)
-
-        self.list_widget = QListWidget()
-        self.layout.addWidget(self.list_widget)
-
-        self.update_list_widget()
-        self.update_current_folder_label()  # 更新当前文件夹标签
-
-        # 绑定按钮点击事件
-        self.switch_button.clicked.connect(self.switch_to_selected_folder_and_refresh)
-        self.open_button.clicked.connect(self.open_current_directory_and_refresh)
-        self.back_button.clicked.connect(self.go_back_and_refresh)
-
-    def update_current_folder_label(self):
-        self.current_folder_label.setText(self.current_dir)
-
-    def update_list_widget(self):
-        if self.current_dir and os.path.isdir(self.current_dir):
-            self.list_widget.clear()
-            os.chdir(self.current_dir)
-            for item in os.listdir("."):
-                full_path = os.path.join(self.current_dir, item)
-                if os.path.isdir(full_path):
-                    self.add_list_item(item + "/")
+    def change_directory(self):
+        try:
+            selected_item = self.files_listbox.currentItem()
+            if selected_item:
+                new_dir = selected_item.text()
+                new_path = os.path.join(self.current_path, new_dir)
+                if os.path.isdir(new_path):
+                    self.current_path = new_path
+                    self.refresh()
+                    print("切换目录成功")
                 else:
-                    self.add_list_item(item)
-        else:
-            print("当前目录为空或无效")
+                    print("所选项目不是目录")
+            else:
+                print("未选择目录")
+        except Exception as e:
+            print("切换目录时出错:", e)
 
-    def add_list_item(self, name):
-        item = QListWidgetItem(name)
-        item.setFlags(
-            item.flags() | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-        self.list_widget.addItem(item)
+    def change_drive(self):
+        try:
+            selected_item = self.drive_listbox.currentItem()
+            if selected_item:
+                drive = selected_item.text()
+                if platform.system() == "Windows":
+                    drive += "\\"
+                self.current_path = drive
+                self.refresh()
+                print("切换盘符成功")
+            else:
+                print("未选择盘符")
+        except Exception as e:
+            print("切换盘符时出错:", e)
 
-    def switch_to_selected_folder_and_refresh(self):
-        new_dir = self.switch_to_selected_folder()
-        if new_dir:
-            self.current_dir = new_dir  # 更新当前文件夹路径
-            self.update_current_folder_label()  # 更新当前文件夹标签
-            self.update_list_widget()
 
-    def go_back_and_refresh(self):
-        self.go_back()
-        self.update_list_widget()
+class TwoWindow(QWidget):
+    """Second application window."""
 
-    def open_current_directory_and_refresh(self):
-        self.open_current_directory()
-        self.update_list_widget()
+    def __init__(self):
+        super().__init__()
 
-    def switch_to_selected_folder(self):
-        selected_items = self.list_widget.selectedItems()
-        if selected_items:
-            selected_item_text = selected_items[0].text()
-            full_path = os.path.join(self.current_dir, selected_item_text.rstrip("/"))
-            if os.path.isdir(full_path):  # 检查是否是目录
-                return full_path  # 返回新的当前文件夹路径
-        return self.current_dir  # 如果没有有效的文件夹被选中，返回原始当前文件夹路径
-
-    def go_back(self):
-        self.current_dir = os.path.dirname(self.current_dir)
-        self.update_list_widget()
-        self.update_current_folder_label()
-
-    def open_current_directory(self):
-        if os.path.isdir(self.current_dir):
-            subprocess.Popen(["explorer", self.current_dir])
-        else:
-            print("当前目录为空或无效")
+        layout = QVBoxLayout()
+        label = QLabel("这是功能2页面")
+        layout.addWidget(label)
+        self.setLayout(layout)
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("启动工具")
-        self.setGeometry(100, 100, 400, 400)
+        self.get_file_name_gui = GetFileNameGUI()
+        self.two_window = TwoWindow()
+        self.setCentralWidget(self.get_file_name_gui)
+        self.create_menu()
 
-        self.tool_dir = os.path.abspath("./")
-        self.current_page = None
+    def create_menu(self):
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("&文件")
 
-        self.setup_ui()
+        exit_action = QAction("&退出", self)
+        exit_action.triggered.connect(self.close)  # 退出窗口
+        file_menu.addAction(exit_action)
 
-    def setup_ui(self):
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
+        function_menu = menu_bar.addMenu("&功能")
+        function_one_action = QAction("功能1", self)
+        function_one_action.triggered.connect(self.show_get_file_name_gui)
+        function_menu.addAction(function_one_action)
 
-        self.layout = QVBoxLayout(self.central_widget)
+        function_two_action = QAction("功能2", self)
+        function_two_action.triggered.connect(self.show_two_window)
+        function_menu.addAction(function_two_action)
 
-        self.switch_to_main_page()
+        function_two_menu = menu_bar.addMenu("&系统功能")
+        open_terminal_action = QAction("&打开终端", self)
+        open_terminal_action.triggered.connect(self.open_terminal)
+        function_two_menu.addAction(open_terminal_action)
 
-        self.menu_bar = self.menuBar()
-        file_menu = self.menu_bar.addMenu("功能")
+    def show_get_file_name_gui(self):
+        self.get_file_name_gui = GetFileNameGUI()  # Create a new instance
+        self.setCentralWidget(self.get_file_name_gui)
 
-        self.func1_action = QAction("功能1", self)
-        self.func1_action.triggered.connect(self.switch_to_main_page)
-        file_menu.addAction(self.func1_action)
+    def show_two_window(self):
+        self.two_window = TwoWindow()
+        self.setCentralWidget(self.two_window)
 
-        self.func2_action = QAction("功能2", self)
-        self.func2_action.triggered.connect(self.switch_to_sub_page)
-        file_menu.addAction(self.func2_action)
-
-    def switch_to_main_page(self):
-        if self.current_page:
-            self.current_page.setParent(None)
-            self.current_page = None
-
-        current_dir = os.getcwd()  # 获取当前目录
-        self.current_page = Functionality(current_dir)  # 将当前目录传递给 Functionality 类
-        self.layout.addWidget(self.current_page)
-
-    def switch_to_sub_page(self):
-        if self.current_page:
-            self.current_page.setParent(None)
-            self.current_page = None
-
-        self.current_page = TerminalWidget(os.getcwd())
-        self.layout.addWidget(self.current_page)
-
-        self.current_page.update_list_widget()
-        self.current_page.current_folder_label.setText(os.getcwd())
+    def open_terminal(self):
+        current_path = self.get_file_name_gui.current_path  # 获取GetFileNameGUI实例的current_path属性
+        if platform.system() == "Windows":
+            os.system(f"start cmd /K cd {current_path}")
+            self.get_file_name_gui.output_text.append("成功打开终端")
+        elif platform.system() == "Linux":
+            os.system(f"x-terminal-emulator --working-directory={current_path}")
+            self.get_file_name_gui.output_text.append("成功打开终端")
 
 
 if __name__ == "__main__":
