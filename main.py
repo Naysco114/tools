@@ -4,12 +4,11 @@ import platform
 import subprocess
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QListWidget, QLabel, QPushButton, QLineEdit
+    QTextEdit, QListWidget, QLabel, QPushButton, QLineEdit, QStackedWidget
 )
-from PyQt6.QtCore import pyqtSignal, QIODevice, pyqtSlot
+from PyQt6.QtCore import pyqtSignal, pyqtSlot, QProcess, QUrl
 from PyQt6.QtGui import QTextCursor, QAction
-from PyQt6.QtCore import QProcess
-
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 class Stream:
     """Redirects console output to text widget."""
@@ -22,7 +21,6 @@ class Stream:
 
     def flush(self):
         pass  # No-op for flush
-
 
 class TerminalWidget(QWidget):
     command_executed = pyqtSignal(str)
@@ -54,9 +52,9 @@ class TerminalWidget(QWidget):
 
     def start_terminal(self):
         if sys.platform == "win32":
-            self.process.start("cmd", [], QIODevice.OpenModeFlag.ReadWrite)
+            self.process.start("cmd", [])
         elif sys.platform.startswith("linux"):
-            self.process.start("bash", [], QIODevice.OpenModeFlag.ReadWrite)
+            self.process.start("bash", [])
 
     def execute_command(self):
         command = self.command_line.text().strip()
@@ -93,6 +91,33 @@ class TerminalWidget(QWidget):
             cursor.insertText(text)
         self.output_text.setTextCursor(cursor)
 
+class BrowserWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        layout = QVBoxLayout()
+
+        # Add URL input field and execute button
+        url_layout = QHBoxLayout()
+        self.url_input = QLineEdit()
+        url_layout.addWidget(self.url_input)
+        self.execute_button = QPushButton("执行")
+        url_layout.addWidget(self.execute_button)
+        layout.addLayout(url_layout)
+
+        # Add browser widget
+        self.browser = QWebEngineView()
+        layout.addWidget(self.browser)
+
+        self.setLayout(layout)
+
+        self.execute_button.clicked.connect(self.load_url)
+
+    def load_url(self):
+        url = self.url_input.text()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            url = "http://" + url
+        self.browser.load(QUrl(url))
 
 class GetFileNameGUI(QWidget):
     """Main application window."""
@@ -256,7 +281,6 @@ class GetFileNameGUI(QWidget):
         except Exception as e:
             print("切换盘符时出错:", e)
 
-
 class TwoWindow(QWidget):
     """Second application window."""
 
@@ -264,17 +288,42 @@ class TwoWindow(QWidget):
         super().__init__()
 
         layout = QVBoxLayout()
-        label = QLabel("这是功能2页面")
-        layout.addWidget(label)
+
+        # Add URL input field and execute button
+        url_layout = QHBoxLayout()
+        self.url_input = QLineEdit()
+        url_layout.addWidget(self.url_input)
+        self.execute_button = QPushButton("执行")
+        url_layout.addWidget(self.execute_button)
+        layout.addLayout(url_layout)
+
+        # Add browser widget
+        self.browser = QWebEngineView()
+        layout.addWidget(self.browser)
+
         self.setLayout(layout)
 
+        self.execute_button.clicked.connect(self.load_url)
+
+    def load_url(self):
+        url = self.url_input.text()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            url = "http://" + url
+        self.browser.load(QUrl(url))
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.stacked_widget = QStackedWidget()
+        self.setCentralWidget(self.stacked_widget)
+
         self.get_file_name_gui = GetFileNameGUI()
         self.two_window = TwoWindow()
-        self.setCentralWidget(self.get_file_name_gui)
+
+        self.stacked_widget.addWidget(self.get_file_name_gui)
+        self.stacked_widget.addWidget(self.two_window)
+
         self.create_menu()
 
     def create_menu(self):
@@ -287,25 +336,16 @@ class MainWindow(QMainWindow):
 
         function_menu = menu_bar.addMenu("&功能")
         function_one_action = QAction("功能1", self)
-        function_one_action.triggered.connect(self.show_get_file_name_gui)
+        function_one_action.triggered.connect(lambda: self.stacked_widget.setCurrentWidget(self.get_file_name_gui))
         function_menu.addAction(function_one_action)
-
         function_two_action = QAction("功能2", self)
-        function_two_action.triggered.connect(self.show_two_window)
+        function_two_action.triggered.connect(lambda: self.stacked_widget.setCurrentWidget(self.two_window))
         function_menu.addAction(function_two_action)
 
         function_two_menu = menu_bar.addMenu("&系统功能")
         open_terminal_action = QAction("&打开终端", self)
         open_terminal_action.triggered.connect(self.open_terminal)
         function_two_menu.addAction(open_terminal_action)
-
-    def show_get_file_name_gui(self):
-        self.get_file_name_gui = GetFileNameGUI()  # Create a new instance
-        self.setCentralWidget(self.get_file_name_gui)
-
-    def show_two_window(self):
-        self.two_window = TwoWindow()
-        self.setCentralWidget(self.two_window)
 
     def open_terminal(self):
         current_path = self.get_file_name_gui.current_path  # 获取GetFileNameGUI实例的current_path属性
@@ -315,7 +355,6 @@ class MainWindow(QMainWindow):
         elif platform.system() == "Linux":
             os.system(f"x-terminal-emulator --working-directory={current_path}")
             self.get_file_name_gui.output_text.append("成功打开终端")
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
