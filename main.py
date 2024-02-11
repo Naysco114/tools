@@ -2,6 +2,8 @@ import os
 import sys
 import platform
 import subprocess
+import threading
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QListWidget, QLabel, QPushButton, QLineEdit, QStackedWidget
@@ -9,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, pyqtSlot, QProcess, QUrl
 from PyQt6.QtGui import QTextCursor, QAction
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineSettings
 
 
 class Stream:
@@ -112,15 +115,26 @@ class BrowserWidget(QWidget):
         self.browser = QWebEngineView()
         layout.addWidget(self.browser)
 
+        settings = self.browser.page().settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.AllowGeolocationOnInsecureOrigins, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.AllowCrossOriginRequests, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.WebRTCPublicInterfacesOnly, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.WebAssemblyEnabled, True)
+
         self.setLayout(layout)
 
-        self.execute_button.clicked.connect(self.load_url)
+        # Enable browser cache
+        settings = self.browser.page().settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
 
-    def load_url(self):
-        url = self.url_input.text()
-        if not (url.startswith("http://") or url.startswith("https://")):
-            url = "http://" + url
-        self.browser.load(QUrl(url))
+        # Disable proxy auto-detection
+        settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadProxy, False)
 
 
 class GetFileNameGUI(QWidget):
@@ -167,7 +181,8 @@ class GetFileNameGUI(QWidget):
         button_layout.addWidget(self.clear_output_button)
         button_layout.addWidget(self.change_dir_button)
         button_layout.addWidget(self.change_drive_button)
-        button_layout.addWidget(self.get_system_info_button)  # 添加获取系统信息按钮
+        button_layout.addWidget(self.get_system_info_button)  # Make sure this line is correct
+        button_layout.addWidget(self.execute_button)  # Add this line to include the execute button
 
         directory_layout = QHBoxLayout()
         directory_layout.addWidget(self.label)
@@ -193,9 +208,24 @@ class GetFileNameGUI(QWidget):
         self.clear_output_button.clicked.connect(self.clear_output)
         self.change_dir_button.clicked.connect(self.change_directory)
         self.change_drive_button.clicked.connect(self.change_drive)
+        self.execute_button.clicked.connect(self.execute_selected_file)
+        self.get_system_info_button.clicked.connect(self.get_system_info)
 
-        self.execute_button.clicked.connect(self.execute_command)
-        self.get_system_info_button.clicked.connect(self.get_system_info)  # 连接获取系统信息功能
+    def execute_selected_file(self):
+        selected_items = self.files_listbox.selectedItems()  # Corrected line
+        if selected_items:
+            selected_item_text = selected_items[0].text()
+            full_path = os.path.join(self.current_path, selected_item_text)
+            self.execute_file(full_path)
+
+    def execute_file(self, filename):
+        if os.path.isfile(filename):
+            if filename.endswith(".py"):
+                subprocess.Popen(["python", filename])
+            elif filename.endswith(".jar"):
+                subprocess.Popen(["java", "-jar", filename])
+            elif filename.endswith(".exe"):
+                subprocess.Popen([filename])
 
     def get_drives(self):
         if platform.system() == "Windows":
