@@ -4,6 +4,10 @@ import platform
 import subprocess
 import threading
 
+import os
+import pythoncom
+from win32com.client import Dispatch
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QListWidget, QLabel, QPushButton, QLineEdit, QStackedWidget
@@ -226,6 +230,16 @@ class GetFileNameGUI(QWidget):
                 subprocess.Popen(["java", "-jar", filename])
             elif filename.endswith(".exe"):
                 subprocess.Popen([filename])
+            elif filename.endswith(".lnk"):  # Handle shortcut files
+                # Resolve the target of the shortcut
+                shell = Dispatch("WScript.Shell")
+                shortcut = shell.CreateShortCut(filename)
+                target_path = shortcut.TargetPath
+
+                # Execute the resolved target
+                os.startfile(target_path)
+            elif filename.endswith(".txt"):  # Handle text files
+                subprocess.Popen(["notepad", filename])
 
     def get_drives(self):
         if platform.system() == "Windows":
