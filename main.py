@@ -372,10 +372,10 @@ class MainWindow(QMainWindow):
         file_menu.addAction(exit_action)
 
         function_menu = menu_bar.addMenu("&功能")
-        function_one_action = QAction("功能1", self)
+        function_one_action = QAction("文件管理器", self)
         function_one_action.triggered.connect(lambda: self.stacked_widget.setCurrentWidget(self.get_file_name_gui))
         function_menu.addAction(function_one_action)
-        function_two_action = QAction("功能2", self)
+        function_two_action = QAction("浏览器", self)
         function_two_action.triggered.connect(lambda: self.stacked_widget.setCurrentWidget(self.two_window))
         function_menu.addAction(function_two_action)
 
