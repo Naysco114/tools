@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QMainWindow, QStackedWidget
 from PyQt6.QtGui import QAction
 from window.get_file_name_gui import GetFileNameGUI
 from window.two_window import TwoWindow
-
+from window.about import AboutPage
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -43,6 +43,10 @@ class MainWindow(QMainWindow):
         open_terminal_action.triggered.connect(self.open_terminal)
         function_two_menu.addAction(open_terminal_action)
 
+        about_action = QAction("&关于", self)
+        about_action.triggered.connect(self.show_about_page)
+        menu_bar.addAction(about_action)
+
     def open_terminal(self):
         current_path = self.get_file_name_gui.current_path  # 获取GetFileNameGUI实例的current_path属性
         if platform.system() == "Windows":
@@ -51,3 +55,10 @@ class MainWindow(QMainWindow):
         elif platform.system() == "Linux":
             os.system(f"x-terminal-emulator --working-directory={current_path}")
             self.get_file_name_gui.output_text.append("成功打开终端")
+
+    def show_about_page(self):
+        # 创建关于页面实例
+        about_page = AboutPage()
+        # 在 stacked_widget 中显示关于页面
+        self.stacked_widget.addWidget(about_page)
+        self.stacked_widget.setCurrentWidget(about_page)
