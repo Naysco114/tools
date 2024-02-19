@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 import platform
 
+
 class GetFileNameGUI:
     def __init__(self, root):
         self.root = root
@@ -96,6 +97,7 @@ class GetFileNameGUI:
             os.system("start cmd /K cd " + self.current_directory)
         elif platform.system() == "Linux":
             os.system("x-terminal-emulator --working-directory=" + self.current_directory)
+
 
 # 创建 Tkinter 应用程序
 root = tk.Tk()

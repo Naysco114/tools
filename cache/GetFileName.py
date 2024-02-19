@@ -1,12 +1,15 @@
 import os
 import sys
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QListWidget, QLabel, QLineEdit, QErrorMessage
+from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, \
+    QListWidget, QLabel, QLineEdit, QErrorMessage
 import subprocess
 import locale
 
+
 class Stream:
     """Redirects console output to text widget."""
+
     def __init__(self, text_widget):
         self.text_widget = text_widget
 
@@ -18,6 +21,7 @@ class Stream:
             error_message = QErrorMessage()
             error_message.showMessage("Error decoding output")
             error_message.exec()
+
 
 class GetFileNameGUI(QMainWindow):
     """Main application window."""
